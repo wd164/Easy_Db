@@ -33,4 +33,28 @@ public class ActionDTO implements Serializable {
                 ", value='" + value + '\'' +
                 '}';
     }
+
+    public ActionTypeEnum getType() {
+        return type;
+    }
+
+    public void setType(ActionTypeEnum type) {
+        this.type = type;
+    }
+
+    public String getKey() {
+        return key;
+    }
+
+    public void setKey(String key) {
+        this.key = key;
+    }
+
+    public String getValue() {
+        return value;
+    }
+
+    public void setValue(String value) {
+        this.value = value;
+    }
 }

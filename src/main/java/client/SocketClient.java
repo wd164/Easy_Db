@@ -7,9 +7,12 @@
  */
 package client;
 
+import com.alibaba.fastjson.JSONObject;
 import dto.ActionDTO;
 import dto.ActionTypeEnum;
 import dto.RespDTO;
+import model.command.RmCommand;
+import utils.RandomAccessFileUtil;
 
 import java.io.*;
 import java.net.Socket;
@@ -60,7 +63,25 @@ public class SocketClient implements Client {
 
     @Override
     public void rm(String key) {
+        try (Socket socket = new Socket(host, port);
+             ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
 
+            // 发送删除请求
+            ActionDTO dto = new ActionDTO(ActionTypeEnum.RM, key, null);
+            oos.writeObject(dto);
+            oos.flush();
+
+            // 尝试读取响应
+            try {
+                RespDTO resp = (RespDTO) ois.readObject();
+                System.out.println("resp data: " + resp.toString());
+            } catch (EOFException e) {
+                System.out.println("No response received, or connection was closed prematurely.");
+            }
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 
 }

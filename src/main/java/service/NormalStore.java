@@ -165,31 +165,60 @@ public class NormalStore implements Store {
         return null;
     }
 
-    @Override
-    public void rm(String key) {
+//    @Override
+//    public void rm(String key) {
+//        try {
+//            RmCommand command = new RmCommand(key);
+//            byte[] commandBytes = JSONObject.toJSONBytes(command);
+//            // 加锁
+//            indexLock.writeLock().lock();
+//            // TODO://先写内存表，内存表达到一定阀值再写进磁盘
+//
+//            // 写table（wal）文件
+//            int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
+//            // 保存到memTable
+//
+//            // 添加索引
+//            CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
+//            index.put(key, cmdPos);
+//
+//            // TODO://判断是否需要将内存表中的值写回table
+//
+//        } catch (Throwable t) {
+//            throw new RuntimeException(t);
+//        } finally {
+//            indexLock.writeLock().unlock();
+//        }
+//    }
+@Override
+public void rm(String key) {
+    try {
+        RmCommand command = new RmCommand(key);
+        byte[] commandBytes = JSONObject.toJSONBytes(command);
+
+        // 加写锁
+        indexLock.writeLock().lock();
         try {
-            RmCommand command = new RmCommand(key);
-            byte[] commandBytes = JSONObject.toJSONBytes(command);
-            // 加锁
-            indexLock.writeLock().lock();
-            // TODO://先写内存表，内存表达到一定阀值再写进磁盘
+            // 从内存表中删除键
+            memTable.remove(key);
+            // 从索引中删除键
+            index.remove(key);
 
-            // 写table（wal）文件
+            // 写入WAL日志文件，记录删除操作
+            RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
-            // 保存到memTable
 
-            // 添加索引
-            CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
-            index.put(key, cmdPos);
-
-            // TODO://判断是否需要将内存表中的值写回table
-
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
+            // 由于键已被删除，我们不需要在索引中保留它的位置信息
+            // 如果需要持久化删除操作，可以在这里添加逻辑
         } finally {
+            // 释放写锁
             indexLock.writeLock().unlock();
         }
+    } catch (Throwable t) {
+        // 处理异常，例如打印堆栈跟踪或者记录日志
+        LoggerUtil.error(LOGGER, t, logFormat, "Error removing key: " + key);
     }
+}
 
     @Override
     public void close() throws IOException {

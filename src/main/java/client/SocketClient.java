@@ -36,7 +36,7 @@ public class SocketClient implements Client {
             oos.writeObject(dto);
             oos.flush();
             RespDTO resp = (RespDTO) ois.readObject();
-            System.out.println("resp data: "+ resp.toString());
+            System.out.println("resp data: " + resp.toString());
             // 接收响应数据
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
@@ -53,7 +53,7 @@ public class SocketClient implements Client {
             oos.writeObject(dto);
             oos.flush();
             RespDTO resp = (RespDTO) ois.readObject();
-            System.out.println("resp data: "+ resp.toString());
+            System.out.println("resp data: " + resp.toString());
             // 接收响应数据
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
@@ -73,12 +73,8 @@ public class SocketClient implements Client {
             oos.flush();
 
             // 尝试读取响应
-            try {
-                RespDTO resp = (RespDTO) ois.readObject();
-                System.out.println("resp data: " + resp.toString());
-            } catch (EOFException e) {
-                System.out.println("No response received, or connection was closed prematurely.");
-            }
+            RespDTO resp = (RespDTO) ois.readObject();
+            System.out.println("resp data: " + resp.toString());
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }

@@ -124,6 +124,9 @@ public class NormalStore implements Store {
             // 加锁
             indexLock.writeLock().lock();
             // TODO://先写内存表，内存表达到一定阀值再写进磁盘
+            // 写内存表（memTable）
+            memTable.put(key, command);
+
             // 写table（wal）文件
             RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
@@ -132,6 +135,11 @@ public class NormalStore implements Store {
             CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
             index.put(key, cmdPos);
             // TODO://判断是否需要将内存表中的值写回table
+            // 检查内存表是否达到阀值
+            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
+                // 将内存表写入磁盘
+                flushMemTableToDisk();
+            }
         } catch (Throwable t) {
             throw new RuntimeException(t);
         } finally {
@@ -178,13 +186,6 @@ public class NormalStore implements Store {
             // 写内存表（memTable）
             memTable.put(key, command);
 
-            // 检查内存表是否达到阀值
-            // 检查内存表是否达到阀值
-            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
-                // 将内存表写入磁盘
-                flushMemTableToDisk();
-            }
-
             // 写table（wal）文件
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
             // 保存到memTable
@@ -194,7 +195,9 @@ public class NormalStore implements Store {
             index.put(key, cmdPos);
 
             // TODO://判断是否需要将内存表中的值写回table
+            // 检查内存表是否达到阀值
             if (memTable.size() >= MEM_TABLE_THRESHOLD) {
+                // 将内存表写入磁盘
                 flushMemTableToDisk();
             }
         } catch (Throwable t) {

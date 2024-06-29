@@ -37,6 +37,7 @@ public class NormalStore implements Store {
     public static final String NAME = "data";
     private final Logger LOGGER = LoggerFactory.getLogger(NormalStore.class);
     private final String logFormat = "[NormalStore][{}]: {}";
+    private static final int MEM_TABLE_THRESHOLD = 1000; // 持久化阈值
 
 
     /**
@@ -96,6 +97,7 @@ public class NormalStore implements Store {
             file.seek(start);
             while (start < len) {
                 int cmdLen = file.readInt();
+                System.out.println(cmdLen);
                 byte[] bytes = new byte[cmdLen];
                 file.read(bytes);
                 JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));
@@ -165,63 +167,91 @@ public class NormalStore implements Store {
         return null;
     }
 
-//    @Override
-//    public void rm(String key) {
-//        try {
-//            RmCommand command = new RmCommand(key);
-//            byte[] commandBytes = JSONObject.toJSONBytes(command);
-//            // 加锁
-//            indexLock.writeLock().lock();
-//            // TODO://先写内存表，内存表达到一定阀值再写进磁盘
-//
-//            // 写table（wal）文件
-//            int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
-//            // 保存到memTable
-//
-//            // 添加索引
-//            CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
-//            index.put(key, cmdPos);
-//
-//            // TODO://判断是否需要将内存表中的值写回table
-//
-//        } catch (Throwable t) {
-//            throw new RuntimeException(t);
-//        } finally {
-//            indexLock.writeLock().unlock();
-//        }
-//    }
-@Override
-public void rm(String key) {
-    try {
-        RmCommand command = new RmCommand(key);
-        byte[] commandBytes = JSONObject.toJSONBytes(command);
-
-        // 加写锁
-        indexLock.writeLock().lock();
+    @Override
+    public void rm(String key) {
         try {
-            // 从内存表中删除键
-            memTable.remove(key);
-            // 从索引中删除键
-            index.remove(key);
+            RmCommand command = new RmCommand(key);
+            byte[] commandBytes = JSONObject.toJSONBytes(command);
+            // 加锁
+            indexLock.writeLock().lock();
+            // TODO://先写内存表，内存表达到一定阀值再写进磁盘
+            // 写内存表（memTable）
+            memTable.put(key, command);
 
-            // 写入WAL日志文件，记录删除操作
-            RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
+            // 检查内存表是否达到阀值
+            // 检查内存表是否达到阀值
+            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
+                // 将内存表写入磁盘
+                flushMemTableToDisk();
+            }
+
+            // 写table（wal）文件
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
+            // 保存到memTable
 
-            // 由于键已被删除，我们不需要在索引中保留它的位置信息
-            // 如果需要持久化删除操作，可以在这里添加逻辑
+            // 添加索引
+            CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
+            index.put(key, cmdPos);
+
+            // TODO://判断是否需要将内存表中的值写回table
+            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
+                flushMemTableToDisk();
+            }
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
         } finally {
-            // 释放写锁
             indexLock.writeLock().unlock();
         }
-    } catch (Throwable t) {
-        // 处理异常，例如打印堆栈跟踪或者记录日志
-        LoggerUtil.error(LOGGER, t, logFormat, "Error removing key: " + key);
     }
-}
+//@Override
+//public void rm(String key) {
+//    try {
+//        RmCommand command = new RmCommand(key);
+//        byte[] commandBytes = JSONObject.toJSONBytes(command);
+//
+//        // 加写锁
+//        indexLock.writeLock().lock();
+//        try {
+//            // 从内存表中删除键
+//            memTable.remove(key);
+//            // 从索引中删除键
+//            index.remove(key);
+//
+//            // 写入WAL日志文件，记录删除操作
+//            RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
+//            int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
+//
+//            // 由于键已被删除，我们不需要在索引中保留它的位置信息
+//            // 如果需要持久化删除操作，可以在这里添加逻辑
+//        } finally {
+//            // 释放写锁
+//            indexLock.writeLock().unlock();
+//        }
+//    } catch (Throwable t) {
+//        // 处理异常，例如打印堆栈跟踪或者记录日志
+//        LoggerUtil.error(LOGGER, t, logFormat, "Error removing key: " + key);
+//    }
+//}
+
+    private void flushMemTableToDisk() {
+        // 实现内存表写入磁盘的逻辑
+        // 这里需要遍历内存表，将每个命令写入磁盘，并更新索引
+        for (String key : memTable.keySet()) {
+            Command command = memTable.get(key);
+            byte[] commandBytes = JSONObject.toJSONBytes(command);
+            int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
+            CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
+            index.put(key, cmdPos);
+        }
+        // 清空内存表
+        memTable.clear();
+    }
 
     @Override
     public void close() throws IOException {
-
+        // 关闭资源
+        if (writerReader != null) {
+            writerReader.close();
+        }
     }
 }

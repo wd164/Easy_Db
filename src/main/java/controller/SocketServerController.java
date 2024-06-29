@@ -1,10 +1,3 @@
-/*
- *@Type ServerController.java
- * @Desc
- * @Author urmsone urmsone@163.com
- * @date 2024/6/13 12:20
- * @version
- */
 package controller;
 
 import lombok.Getter;
@@ -15,7 +8,6 @@ import service.NormalStore;
 import service.Store;
 import utils.LoggerUtil;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -28,7 +20,7 @@ public class SocketServerController implements Controller {
     private final String logFormat = "[SocketServerController][{}]: {}";
     private String host;
     private int port;
-    private Store store;
+    private Store store; // This should be an instance of a class that implements the Store interface.
 
     public SocketServerController(String host, int port, Store store) {
         this.host = host;
@@ -38,37 +30,40 @@ public class SocketServerController implements Controller {
 
     @Override
     public void set(String key, String value) {
-
+        // Implement the logic to set a key-value pair in the store.
+        this.store.set(key, value);
     }
 
     @Override
     public String get(String key) {
-        return null;
+        // Implement the logic to retrieve a value by key from the store.
+        return this.store.get(key);
     }
 
     @Override
     public void rm(String key) {
-
+        // Implement the logic to remove a key-value pair from the store.
+        this.store.rm(key);
     }
 
     @Override
     public void startServer() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            LoggerUtil.info(LOGGER, logFormat,"startServer","Server started, waiting for connections...");
+            LoggerUtil.info(LOGGER, logFormat, "startServer", "Server started, waiting for connections...");
 
             while (true) {
                 try {
                     Socket socket = serverSocket.accept();
-                    LoggerUtil.info(LOGGER, logFormat,"startServer","New client connected");
-                    // 为每个客户端连接创建一个新的线程
-                    new Thread(new SocketServerHandler(socket, store)).start();
+                    LoggerUtil.info(LOGGER, logFormat, "startServer", "New client connected");
+                    // For each client connection, create a new thread to handle the request.
+                    new Thread(new SocketServerHandler(socket, this.store)).start();
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    LoggerUtil.error(LOGGER, e, "Error accepting client connection");
+
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            LoggerUtil.error(LOGGER, e, "Error starting server");
         }
-
     }
 }

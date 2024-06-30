@@ -24,6 +24,7 @@ public class SocketClientUsage {
 //            client.get("1");
 //        client.rm("1");
 //         插入大量数据
+<<<<<<< HEAD
 //        client.set("a","dddgsrgfgfgd");
 //        for (int i = 0; i < 1000; i++) {
 //            String key = "key" + i;
@@ -33,6 +34,16 @@ public class SocketClientUsage {
 //            System.out.println("Set " + key);
 //        }
             client.get("aa");
+=======
+        for (int i = 0; i < 1000; i++) {
+            String key = "key" + i;
+            // 生成一个较大的字符串
+            String value = "value" + i;
+            client.set(key, value);
+            System.out.println("Set " + key);
+        }
+
+>>>>>>> ee290779026a520d91e1d5c11a33fc05bef8504a
 //        // 读取部分数据进行验证
 //        for (int i = 0; i < 10; i++) {
 //            String key = "key" + i;

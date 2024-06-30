@@ -45,7 +45,7 @@ public class NormalStore implements Store {
     private final Logger LOGGER = LoggerFactory.getLogger(NormalStore.class);
     private final String logFormat = "[NormalStore][{}]: {}";
     private static final int MEM_TABLE_THRESHOLD = 100; // 持久化阈值
-    private static final long FILE_SIZE_THRESHOLD = 2 * 1024 * 1024; // 文件大小阈值 10MB
+    private static final long FILE_SIZE_THRESHOLD = 10 * 1024; // 文件大小阈值 10MB
     private String currentFilePath;
     private final String dataFilePath;
 

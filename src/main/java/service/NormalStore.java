@@ -29,6 +29,8 @@ import java.util.TreeMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.jar.JarEntry;
+import utils.CompressionUtil;
+
 
 public class NormalStore implements Store {
 
@@ -37,7 +39,9 @@ public class NormalStore implements Store {
     public static final String NAME = "data";
     private final Logger LOGGER = LoggerFactory.getLogger(NormalStore.class);
     private final String logFormat = "[NormalStore][{}]: {}";
-    private static final int MEM_TABLE_THRESHOLD = 1000; // 持久化阈值
+    private static final int MEM_TABLE_THRESHOLD = 100; // 持久化阈值
+    private String currentFilePath;
+    private static final String COMPRESSED_FILE_SUFFIX = ".compressed"; // 压缩文件后缀
 
 
     /**
@@ -65,6 +69,8 @@ public class NormalStore implements Store {
      */
     private RandomAccessFile writerReader;
 
+    private CompressionUtil CompressionUtil;
+
     /**
      * 持久化阈值
      */
@@ -75,6 +81,8 @@ public class NormalStore implements Store {
         this.indexLock = new ReentrantReadWriteLock();
         this.memTable = new TreeMap<String, Command>();
         this.index = new HashMap<>();
+        this.currentFilePath = dataDir + File.separator + NAME + TABLE;
+
 
         File file = new File(dataDir);
         if (!file.exists()) {
@@ -180,6 +188,7 @@ public class NormalStore implements Store {
         } finally {
             indexLock.writeLock().unlock();
         }
+        checkAndRotateIfNecessary();
     }
 
     @Override
@@ -240,6 +249,7 @@ public class NormalStore implements Store {
         } finally {
             indexLock.writeLock().unlock();
         }
+        checkAndRotateIfNecessary();
     }
 //@Override
 //public void rm(String key) {
@@ -292,4 +302,53 @@ public class NormalStore implements Store {
             writerReader.close();
         }
     }
+
+    private void rotate() {
+        try {
+            // 关闭当前 WAL 文件
+            if (writerReader != null) {
+                writerReader.close();
+            }
+
+            // 重命名当前 WAL 文件
+            String rotatedFilePath = currentFilePath + ".old";
+            File currentFile = new File(currentFilePath);
+            if (currentFile.renameTo(new File(rotatedFilePath))) {
+                LOGGER.info(logFormat, "Rotated file renamed to: {}", rotatedFilePath);
+            } else {
+                LOGGER.error(logFormat, "Failed to rename rotated file");
+                return;
+            }
+
+            // 创建新的 WAL 文件
+            writerReader = new RandomAccessFile(currentFilePath, RW_MODE);
+            LOGGER.info(logFormat, "New WAL file created at: {}", currentFilePath);
+
+            // 压缩轮换出的文件
+            compressRotatedFile(rotatedFilePath);
+
+        } catch (IOException e) {
+            LoggerUtil.error(LOGGER, e, logFormat, "Error during file rotation");
+        }
+    }
+
+    private void compressRotatedFile(String filePath) {
+        // 这里应该添加实际的压缩逻辑，例如使用 GZIP 或其他压缩工具
+        // 以下代码仅为示例，展示如何调用压缩方法
+        try {
+            CompressionUtil.compressFile(filePath, COMPRESSED_FILE_SUFFIX);
+            LOGGER.info(logFormat, "Compressed rotated file: {}", filePath);
+        } catch (IOException e) {
+            LoggerUtil.error(LOGGER, e, logFormat, "Error compressing rotated file: " + filePath);
+        }
+    }
+
+    private void checkAndRotateIfNecessary() {
+        File currentFile = new File(currentFilePath);
+        if (currentFile.length() >= MEM_TABLE_THRESHOLD) {
+            rotate();
+        }
+    }
+
+
 }

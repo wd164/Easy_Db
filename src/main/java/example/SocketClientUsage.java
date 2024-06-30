@@ -15,14 +15,21 @@ public class SocketClientUsage {
         String host = "localhost";
         int port = 12345;
         Client client = new SocketClient(host, port);
-        // 插入大量数据
-        for (int i = 0; i < 1000; i++) {
-            String key = "key" + i;
-            // 生成一个较大的字符串
-            String value = "value" + i + new String(new char[1024]).replace("\0", "A");
-            client.set(key, value);
-            System.out.println("Set " + key);
-        }
+//        client.get("zsy1");
+//        client.set("zsy12","for test");
+//        client.get("zsy12");
+//        client.rm("zsy12" );
+//        client.get("zsy12");
+//        client.set("1","1");
+//        client.get("1");
+//         插入大量数据
+//        for (int i = 0; i < 1000; i++) {
+//            String key = "key" + i;
+//            // 生成一个较大的字符串
+//            String value = "value" + i + new String(new char[1024]).replace("\0", "A");
+//            client.set(key, value);
+//            System.out.println("Set " + key);
+//        }
 
 //        // 读取部分数据进行验证
 //        for (int i = 0; i < 10; i++) {

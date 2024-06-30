@@ -131,37 +131,80 @@ public class NormalStore implements Store {
 //        LoggerUtil.debug(LOGGER, logFormat, "reload index: "+index.toString());
 //    }
 
+
+//    没有rotate前版本
+//    private void reloadIndex() throws IOException {
+//        File file = new File(genFilePath());
+//        if (!file.exists()) {
+//            return;
+//        }
+//
+//        try (RandomAccessFile reader = new RandomAccessFile(file, RW_MODE)) {
+//            long fileLength = file.length();
+//            long pos = 0;
+//            while (pos < fileLength) {
+//                reader.seek(pos);
+//                if (fileLength - pos < 4) {
+//                    LOGGER.warn(logFormat, "Incomplete length information at position " + pos);
+//                    break;
+//                }
+//                int length = reader.readInt();
+//                if (fileLength - pos - 4 < length) {
+//                    LOGGER.warn(logFormat, "Incomplete data at position " + pos + " with length " + length);
+//                    break;
+//                }
+//                byte[] commandBytes = new byte[length];
+//                reader.readFully(commandBytes);
+//                String jsonString = new String(commandBytes, StandardCharsets.UTF_8);
+//
+//                // 打印解析前的 JSON 字符串
+//                System.out.println("Parsing JSON: " + jsonString);
+//
+//                Command command = JSON.parseObject(jsonString, Command.class);
+//                CommandPos cmdPos = new CommandPos((int) pos, length);
+//                index.put(command.getKey(), cmdPos);
+//                pos += 4 + length;
+//            }
+//        }
+//    }
+
     private void reloadIndex() throws IOException {
-        File file = new File(genFilePath());
-        if (!file.exists()) {
+        // 获取所有以 .table 和 .old 结尾的文件
+        File dataDirectory = new File(dataDir);
+        File[] logFiles = dataDirectory.listFiles((dir, name) -> name.endsWith(".table") || name.endsWith(".old"));
+
+        if (logFiles == null || logFiles.length == 0) {
             return;
         }
 
-        try (RandomAccessFile reader = new RandomAccessFile(file, RW_MODE)) {
-            long fileLength = file.length();
-            long pos = 0;
-            while (pos < fileLength) {
-                reader.seek(pos);
-                if (fileLength - pos < 4) {
-                    LOGGER.warn(logFormat, "Incomplete length information at position " + pos);
-                    break;
-                }
-                int length = reader.readInt();
-                if (fileLength - pos - 4 < length) {
-                    LOGGER.warn(logFormat, "Incomplete data at position " + pos + " with length " + length);
-                    break;
-                }
-                byte[] commandBytes = new byte[length];
-                reader.readFully(commandBytes);
-                String jsonString = new String(commandBytes, StandardCharsets.UTF_8);
+        for (File file : logFiles) {
+            try (RandomAccessFile reader = new RandomAccessFile(file, RW_MODE)) {
+                long fileLength = file.length();
+                long pos = 0;
+                while (pos < fileLength) {
+                    reader.seek(pos);
+                    if (fileLength - pos < 4) {
+                        LOGGER.warn(logFormat, "Incomplete length information at position " + pos);
+                        break;
+                    }
+                    int length = reader.readInt();
+                    if (fileLength - pos - 4 < length) {
+                        LOGGER.warn(logFormat, "Incomplete data at position " + pos + " with length " + length);
+                        break;
+                    }
+                    byte[] commandBytes = new byte[length];
+                    reader.readFully(commandBytes);
+                    String jsonString = new String(commandBytes, StandardCharsets.UTF_8);
 
-                // 打印解析前的 JSON 字符串
-                System.out.println("Parsing JSON: " + jsonString);
+                    // 打印解析前的 JSON 字符串
+                    System.out.println("Parsing JSON: " + jsonString);
 
-                Command command = JSON.parseObject(jsonString, Command.class);
-                CommandPos cmdPos = new CommandPos((int) pos, length);
-                index.put(command.getKey(), cmdPos);
-                pos += 4 + length;
+                    // 将 JSON 字符串解析为 Command 对象
+                    Command command = JSON.parseObject(jsonString, Command.class);
+                    CommandPos cmdPos = new CommandPos((int) pos, length);
+                    index.put(command.getKey(), cmdPos);
+                    pos += 4 + length;
+                }
             }
         }
     }
@@ -289,15 +332,25 @@ public class NormalStore implements Store {
 //}
 
     private void flushMemTableToDisk() {
-        // 实现内存表写入磁盘的逻辑
-        // 这里需要遍历内存表，将每个命令写入磁盘，并更新索引
+        // 获取文件路径
+        String filePath = this.genFilePath();
+
+        // 遍历内存表，将每个命令写入磁盘，并更新索引
         for (String key : memTable.keySet()) {
             Command command = memTable.get(key);
             byte[] commandBytes = JSONObject.toJSONBytes(command);
-            int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
+
+            // 写入磁盘文件并获取写入位置
+            int pos = RandomAccessFileUtil.write(filePath, commandBytes);
+
+            // 创建新的命令位置对象，并更新索引
             CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
             index.put(key, cmdPos);
+
+            // 记录日志
+            LOGGER.info("Flushed command to disk: key={}, pos={}, length={}", key, pos, commandBytes.length);
         }
+
         // 清空内存表
         memTable.clear();
     }
@@ -352,5 +405,6 @@ public class NormalStore implements Store {
             rotate();
         }
     }
+
 
 }

@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import utils.CommandUtil;
 import utils.LoggerUtil;
 import utils.RandomAccessFileUtil;
+import utils.CompressionUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,6 +27,8 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.TreeMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.jar.JarEntry;
@@ -40,6 +43,7 @@ public class NormalStore implements Store {
     private final Logger LOGGER = LoggerFactory.getLogger(NormalStore.class);
     private final String logFormat = "[NormalStore][{}]: {}";
     private static final int MEM_TABLE_THRESHOLD = 100; // 持久化阈值
+    private static final long FILE_SIZE_THRESHOLD = 2 * 1024 * 1024; // 文件大小阈值 10MB
     private String currentFilePath;
     private static final String COMPRESSED_FILE_SUFFIX = ".compressed"; // 压缩文件后缀
 
@@ -71,6 +75,8 @@ public class NormalStore implements Store {
 
     private CompressionUtil CompressionUtil;
 
+    private final ExecutorService executorService;
+
     /**
      * 持久化阈值
      */
@@ -82,6 +88,7 @@ public class NormalStore implements Store {
         this.memTable = new TreeMap<String, Command>();
         this.index = new HashMap<>();
         this.currentFilePath = dataDir + File.separator + NAME + TABLE;
+        this.executorService = Executors.newFixedThreadPool(2); // 创建一个固定大小为2的线程池
 
 
         File file = new File(dataDir);
@@ -305,13 +312,12 @@ public class NormalStore implements Store {
 
     private void rotate() {
         try {
-            // 关闭当前 WAL 文件
             if (writerReader != null) {
                 writerReader.close();
             }
 
-            // 重命名当前 WAL 文件
-            String rotatedFilePath = currentFilePath + ".old";
+            // 使用时间戳生成唯一的文件名
+            String rotatedFilePath = currentFilePath + "." + System.currentTimeMillis() + ".old";
             File currentFile = new File(currentFilePath);
             if (currentFile.renameTo(new File(rotatedFilePath))) {
                 LOGGER.info(logFormat, "Rotated file renamed to: {}", rotatedFilePath);
@@ -320,12 +326,11 @@ public class NormalStore implements Store {
                 return;
             }
 
-            // 创建新的 WAL 文件
             writerReader = new RandomAccessFile(currentFilePath, RW_MODE);
             LOGGER.info(logFormat, "New WAL file created at: {}", currentFilePath);
 
-            // 压缩轮换出的文件
-            compressRotatedFile(rotatedFilePath);
+            // 使用多线程进行压缩
+            executorService.submit(() -> compressRotatedFile(rotatedFilePath));
 
         } catch (IOException e) {
             LoggerUtil.error(LOGGER, e, logFormat, "Error during file rotation");
@@ -333,8 +338,6 @@ public class NormalStore implements Store {
     }
 
     private void compressRotatedFile(String filePath) {
-        // 这里应该添加实际的压缩逻辑，例如使用 GZIP 或其他压缩工具
-        // 以下代码仅为示例，展示如何调用压缩方法
         try {
             CompressionUtil.compressFile(filePath, COMPRESSED_FILE_SUFFIX);
             LOGGER.info(logFormat, "Compressed rotated file: {}", filePath);
@@ -345,10 +348,9 @@ public class NormalStore implements Store {
 
     private void checkAndRotateIfNecessary() {
         File currentFile = new File(currentFilePath);
-        if (currentFile.length() >= MEM_TABLE_THRESHOLD) {
+        if (currentFile.length() >= FILE_SIZE_THRESHOLD) {
             rotate();
         }
     }
-
 
 }

@@ -70,7 +70,7 @@ public class NormalStore implements Store {
      */
 //    private final int storeThreshold;
 
-    public NormalStore(String dataDir) {
+    public NormalStore(String dataDir) throws IOException {
         this.dataDir = dataDir;
         this.indexLock = new ReentrantReadWriteLock();
         this.memTable = new TreeMap<String, Command>();
@@ -89,31 +89,66 @@ public class NormalStore implements Store {
     }
 
 
-    public void reloadIndex() {
-        try {
-            RandomAccessFile file = new RandomAccessFile(this.genFilePath(), RW_MODE);
-            long len = file.length();
-            long start = 0;
-            file.seek(start);
-            while (start < len) {
-                int cmdLen = file.readInt();
-                System.out.println(cmdLen);
-                byte[] bytes = new byte[cmdLen];
-                file.read(bytes);
-                JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));
-                Command command = CommandUtil.jsonToCommand(value);
-                start += 4;
-                if (command != null) {
-                    CommandPos cmdPos = new CommandPos((int) start, cmdLen);
-                    index.put(command.getKey(), cmdPos);
-                }
-                start += cmdLen;
-            }
-            file.seek(file.length());
-        } catch (Exception e) {
-            e.printStackTrace();
+//    public void reloadIndex() {
+//        try {
+//            RandomAccessFile file = new RandomAccessFile(this.genFilePath(), RW_MODE);
+//            long len = file.length();
+//            long start = 0;
+//            file.seek(start);
+//            while (start < len) {
+//                int cmdLen = file.readInt();
+//                System.out.println(cmdLen);
+//                byte[] bytes = new byte[cmdLen];
+//                file.read(bytes);
+//                JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));
+//                Command command = CommandUtil.jsonToCommand(value);
+//                start += 4;
+//                if (command != null) {
+//                    CommandPos cmdPos = new CommandPos((int) start, cmdLen);
+//                    index.put(command.getKey(), cmdPos);
+//                }
+//                start += cmdLen;
+//            }
+//            file.seek(file.length());
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+//        LoggerUtil.debug(LOGGER, logFormat, "reload index: "+index.toString());
+//    }
+
+    private void reloadIndex() throws IOException {
+        File file = new File(genFilePath());
+        if (!file.exists()) {
+            return;
         }
-        LoggerUtil.debug(LOGGER, logFormat, "reload index: "+index.toString());
+
+        try (RandomAccessFile reader = new RandomAccessFile(file, RW_MODE)) {
+            long fileLength = file.length();
+            long pos = 0;
+            while (pos < fileLength) {
+                reader.seek(pos);
+                if (fileLength - pos < 4) {
+                    LOGGER.warn(logFormat, "Incomplete length information at position " + pos);
+                    break;
+                }
+                int length = reader.readInt();
+                if (fileLength - pos - 4 < length) {
+                    LOGGER.warn(logFormat, "Incomplete data at position " + pos + " with length " + length);
+                    break;
+                }
+                byte[] commandBytes = new byte[length];
+                reader.readFully(commandBytes);
+                String jsonString = new String(commandBytes, StandardCharsets.UTF_8);
+
+                // 打印解析前的 JSON 字符串
+                System.out.println("Parsing JSON: " + jsonString);
+
+                Command command = JSON.parseObject(jsonString, Command.class);
+                CommandPos cmdPos = new CommandPos((int) pos, length);
+                index.put(command.getKey(), cmdPos);
+                pos += 4 + length;
+            }
+        }
     }
 
     @Override

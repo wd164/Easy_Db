@@ -10,9 +10,10 @@ package example;
 import service.NormalStore;
 
 import java.io.File;
+import java.io.IOException;
 
 public class StoreUsage {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         String dataDir="data"+ File.separator;
         NormalStore store = new NormalStore(dataDir);
 //        store.set("zsy1","1");

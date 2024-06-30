@@ -12,9 +12,10 @@ import service.NormalStore;
 import service.Store;
 
 import java.io.File;
+import java.io.IOException;
 
 public class SocketServerUsage {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         String host = "localhost";
         int port = 12345;
         String dataDir = "data"+ File.separator;

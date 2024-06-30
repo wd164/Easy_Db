@@ -24,13 +24,13 @@ public class SocketClientUsage {
 //            client.get("1");
 //        client.rm("1");
 //         插入大量数据
-//        for (int i = 0; i < 1000; i++) {
-//            String key = "key" + i;
-//            // 生成一个较大的字符串
-//            String value = "value" + i + new String(new char[1024]).replace("\0", "A");
-//            client.set(key, value);
-//            System.out.println("Set " + key);
-//        }
+        for (int i = 0; i < 1000; i++) {
+            String key = "key" + i;
+            // 生成一个较大的字符串
+            String value = "value" + i;
+            client.set(key, value);
+            System.out.println("Set " + key);
+        }
 
 //        // 读取部分数据进行验证
 //        for (int i = 0; i < 10; i++) {

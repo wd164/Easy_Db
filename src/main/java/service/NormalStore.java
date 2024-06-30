@@ -182,7 +182,7 @@ public class NormalStore implements Store {
             // TODO://先写内存表，内存表达到一定阀值再写进磁盘
             // 写内存表（memTable）
             memTable.put(key, command);
-
+            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
             // 写table（wal）文件
             RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
@@ -192,9 +192,8 @@ public class NormalStore implements Store {
             index.put(key, cmdPos);
             // TODO://判断是否需要将内存表中的值写回table
             // 检查内存表是否达到阀值
-            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
                 // 将内存表写入磁盘
-                flushMemTableToDisk();
+                applyCommandToDataFile(command);
             }
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -253,17 +252,15 @@ public class NormalStore implements Store {
 
             // 写入内存表
             memTable.put(key, command);
-
+            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
             // 写入 WAL 文件
             RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
-
             CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
             index.put(key, cmdPos);
-
+            memTable.clear();
             // 检查内存表是否达到阈值，达到则写入磁盘
-            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
-                flushMemTableToDisk();
+            applyCommandToDataFile(command);
             }
 
             LOGGER.info("Removed key: {} with command length: {}", key, commandBytes.length);
@@ -306,33 +303,35 @@ public class NormalStore implements Store {
 //    }
 //}
 
-    private void flushMemTableToDisk() {
-        try {
-            String filePath = this.genFilePath();
-            for (Map.Entry<String, Command> entry : memTable.entrySet()) {
-                String key = entry.getKey();
-                Command command = entry.getValue();
-                byte[] commandBytes = JSONObject.toJSONBytes(command);
-
-                // 将命令应用到实际数据文件
-                applyCommandToDataFile(command);
-
-                // 在 WAL 文件中记录命令
-                int pos = RandomAccessFileUtil.write(filePath, commandBytes);
-
-                // 更新索引
-                CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
-                index.put(key, cmdPos);
-
-                LOGGER.info("Flushed command to disk: key={}, pos={}, length={}", key, pos, commandBytes.length);
-            }
-        } catch (Throwable t) {
-            throw new RuntimeException("Error flushing memTable to disk", t);
-        } finally {
-            // 清空内存表
-            memTable.clear();
-        }
-    }
+//    private void flushMemTableToDisk() {
+//        try {
+//            String filePath = this.genFilePath();
+//            for (Map.Entry<String, Command> entry : memTable.entrySet()) {
+//                String key = entry.getKey();
+//                Command command = entry.getValue();
+//                byte[] commandBytes = JSONObject.toJSONBytes(command);
+//
+//                // 将命令应用到实际数据文件
+//                applyCommandToDataFile(command);
+//
+//                // 在 WAL 文件中记录命令
+//                RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
+//                int pos = RandomAccessFileUtil.write(filePath, commandBytes);
+//
+//
+//                // 更新索引
+//                CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
+//                index.put(key, cmdPos);
+//
+//                LOGGER.info("Flushed command to disk: key={}, pos={}, length={}", key, pos, commandBytes.length);
+//            }
+//        } catch (Throwable t) {
+//            throw new RuntimeException("Error flushing memTable to disk", t);
+//        } finally {
+//            // 清空内存表
+//            memTable.clear();
+//        }
+//    }
 
     private void applyCommandToDataFile(Command command) throws IOException {
         try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
@@ -377,8 +376,8 @@ public class NormalStore implements Store {
                 return;
             }
 
-            writerReader = new RandomAccessFile(currentFilePath, RW_MODE);
-            LOGGER.info(logFormat, "创建新的data文件: {}", currentFilePath);
+            writerReader = new RandomAccessFile(dataFilePath, RW_MODE);
+            LOGGER.info(logFormat, "创建新的data文件: {}", dataFilePath);
 
             // 使用多线程进行压缩
             executorService.submit(() -> compressRotatedFile(rotatedFilePath));

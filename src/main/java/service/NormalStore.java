@@ -116,7 +116,6 @@ public class NormalStore implements Store {
             file.seek(start);
             while (start < len) {
                 int cmdLen = file.readInt();
-                System.out.println(cmdLen);
                 byte[] bytes = new byte[cmdLen];
                 file.read(bytes);
                 JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));

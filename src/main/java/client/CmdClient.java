@@ -22,10 +22,10 @@ public class CmdClient {
     public void initialize(String[] args) {
         // 创建选项对象
         Options options = new Options();
-        SocketClient socketClient = new SocketClient("localhost", 12345);
+        SocketClient socketClient = new SocketClient(host, port);
 
         // 定义各个命令行参数
-        options.addOption("s", "set", true, "set key and value");
+        options.addOption("s", "set", true, "set key and value(Separated by \"-\")");
         options.addOption("g", "get", true, "get value by key");
         options.addOption("r", "remove", true, "remove key and value by key");
         options.addOption("h", "help", false, "show this help message and exit");
@@ -40,7 +40,7 @@ public class CmdClient {
 
             // 帮助信息
             if (cmd.hasOption("h")) {
-                formatter.printHelp("CmdClient [-s SET] [-g GET] [-r REMOVE] [-h] {} ...", options);
+                formatter.printHelp("easy-db.jar [-s SET] [-g GET] [-r REMOVE] [-h] {} ...", options);
             }
 
             // set
@@ -64,7 +64,7 @@ public class CmdClient {
 
         } catch (ParseException e) {
             System.err.println("Parsing failed: " + e.getMessage());
-            formatter.printHelp("CmdClient [-s SET] [-g GET] [-r REMOVE] [-h] {} ...", options);
+            formatter.printHelp("easy-db.jar [-s SET] [-g GET] [-r REMOVE] [-h] {} ...", options);
         }
     }
 }

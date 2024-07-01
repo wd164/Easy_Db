@@ -44,8 +44,8 @@ public class NormalStore implements Store {
     public static final String NAME = "data";
     private final Logger LOGGER = LoggerFactory.getLogger(NormalStore.class);
     private final String logFormat = "[NormalStore][{}]: {}";
-    private static final int MEM_TABLE_THRESHOLD = 100; // 持久化阈值
-    private static final long FILE_SIZE_THRESHOLD = 10 * 1024; // 文件大小阈值 10MB
+    private static final int MEM_TABLE_THRESHOLD = 10 * 1024; // 持久化阈值 10KB
+    private static final long FILE_SIZE_THRESHOLD = 10 * 1024 * 1024; // 文件大小阈值 10MB
     private String currentFilePath;
     private final String dataFilePath;
 
@@ -191,7 +191,6 @@ public class NormalStore implements Store {
             // TODO://先写内存表，内存表达到一定阀值再写进磁盘
             // 写内存表（memTable）
             memTable.put(key, command);
-            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
             // 写table（wal）文件
             RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
@@ -200,9 +199,10 @@ public class NormalStore implements Store {
             CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
             index.put(key, cmdPos);
             // TODO://判断是否需要将内存表中的值写回table
+            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
             // 检查内存表是否达到阀值
                 // 将内存表写入磁盘
-                applyCommandToDataFile(command);
+                flushMemTableToDisk();
             }
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -261,15 +261,17 @@ public class NormalStore implements Store {
 
             // 写入内存表
             memTable.put(key, command);
-            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
+
             // 写入 WAL 文件
             RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
             int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
             CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
             index.put(key, cmdPos);
+            // 写入磁盘后，清空内存表
             memTable.clear();
             // 检查内存表是否达到阈值，达到则写入磁盘
-            applyCommandToDataFile(command);
+            if (memTable.size() >= MEM_TABLE_THRESHOLD) {
+                flushMemTableToDisk();
             }
 
             LOGGER.info("Removed key: {} with command length: {}", key, commandBytes.length);
@@ -313,51 +315,32 @@ public class NormalStore implements Store {
 //}
 
     private void flushMemTableToDisk() {
+        indexLock.writeLock().lock();
         try {
-            String filePath = this.genFilePath();
-            for (Map.Entry<String, Command> entry : memTable.entrySet()) {
-                String key = entry.getKey();
-                Command command = entry.getValue();
-                byte[] commandBytes = JSONObject.toJSONBytes(command);
+            try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
+                for (Map.Entry<String, Command> entry : memTable.entrySet()) {
+                    String key = entry.getKey();
+                    Command command = entry.getValue();
+                    byte[] commandBytes = JSONObject.toJSONBytes(command);
 
-                // 将命令应用到实际数据文件
-                applyCommandToDataFile(command);
+                    // 将命令写入实际数据文件
+                    dataFile.seek(dataFile.length());
+                    dataFile.writeInt(commandBytes.length);
+                    dataFile.write(commandBytes);
 
-                // 在 WAL 文件中记录命令
-                RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
-                int pos = RandomAccessFileUtil.write(filePath, commandBytes);
+                    // 更新索引
+                    CommandPos cmdPos = new CommandPos((int) dataFile.length() - commandBytes.length - 4, commandBytes.length);
+                    index.put(key, cmdPos);
 
-
-                // 更新索引
-                CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
-                index.put(key, cmdPos);
-
-                LOGGER.info("Flushed command to disk: key={}, pos={}, length={}", key, pos, commandBytes.length);
+                    LOGGER.info("Flushed command to disk: key={}, length={}", key, commandBytes.length);
+                }
             }
         } catch (Throwable t) {
             throw new RuntimeException("Error flushing memTable to disk", t);
         } finally {
             // 清空内存表
             memTable.clear();
-        }
-    }
-
-    private void applyCommandToDataFile(Command command) throws IOException {
-        try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
-            if (command instanceof SetCommand) {
-                SetCommand setCommand = (SetCommand) command;
-                dataFile.seek(dataFile.length());
-                byte[] commandBytes = JSONObject.toJSONBytes(command);
-                dataFile.writeInt(commandBytes.length);
-                dataFile.write(commandBytes);
-            } else if (command instanceof RmCommand) {
-                // 处理删除命令，可以使用索引找到对应的记录并将其标记为删除
-                // 这里简单地写入删除命令，实际实现可以更加复杂
-                dataFile.seek(dataFile.length());
-                byte[] commandBytes = JSONObject.toJSONBytes(command);
-                dataFile.writeInt(commandBytes.length);
-                dataFile.write(commandBytes);
-            }
+            indexLock.writeLock().unlock();
         }
     }
 

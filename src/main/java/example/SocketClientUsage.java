@@ -15,7 +15,7 @@ public class SocketClientUsage {
         String host = "localhost";
         int port = 12345;
         Client client = new SocketClient(host, port);
-        client.set("zsy3","letitbe");
+//        client.set("zsy3","letitbe");
 //        client.set("zsy12","for test");
 //        client.get("zsy12");
 //        client.rm("zsy12" );

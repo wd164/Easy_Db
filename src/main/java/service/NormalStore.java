@@ -44,8 +44,8 @@ public class NormalStore implements Store {
     public static final String NAME = "data";
     private final Logger LOGGER = LoggerFactory.getLogger(NormalStore.class);
     private final String logFormat = "[NormalStore][{}]: {}";
-    private static final int MEM_TABLE_THRESHOLD = 10 * 1024; // 持久化阈值 10KB
-    private static final long FILE_SIZE_THRESHOLD = 10 * 1024 * 1024; // 文件大小阈值 10MB
+    private static final int MEM_TABLE_THRESHOLD = 1024; // 持久化阈值
+    private static final long FILE_SIZE_THRESHOLD = 1 * 1024 * 1024; // 文件大小阈值 1MB
     private String currentFilePath;
     private final String dataFilePath;
 
@@ -314,7 +314,7 @@ public class NormalStore implements Store {
 //    }
 //}
 
-    private void flushMemTableToDisk() {
+    public void flushMemTableToDisk() {
         indexLock.writeLock().lock();
         try {
             try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
@@ -350,6 +350,7 @@ public class NormalStore implements Store {
         if (writerReader != null) {
             writerReader.close();
         }
+        flushMemTableToDisk();
     }
 
     private void rotate() {

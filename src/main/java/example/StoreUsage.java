@@ -15,7 +15,7 @@ import java.io.IOException;
 public class StoreUsage {
     public static void main(String[] args) throws IOException {
         String dataDir="data"+ File.separator;
-        NormalStore store = new NormalStore(dataDir);
+//        NormalStore store = new NormalStore(dataDir);
 //        store.set("zsy1","1fdhdfth");
 //        store.set("zsy2","2");
 //        store.set("zsy3","3");

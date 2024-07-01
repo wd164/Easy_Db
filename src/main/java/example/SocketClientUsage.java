@@ -25,13 +25,13 @@ public class SocketClientUsage {
 //        client.rm("1");
 //         插入大量数据
 //        client.set("a","dddgsrgfgfgd");
-//        for (int i = 0; i < 1000; i++) {
-//            String key = "key" + i;
-//            // 生成一个较大的字符串
-//            String value = "value" + i + new String(new char[1024]).replace("\0", "A");
-//            client.set(key, value);
-//            System.out.println("Set " + key);
-//        }
+        for (int i = 0; i < 1000; i++) {
+            String key = "key" + i;
+            // 生成一个较大的字符串
+            String value = "value" + i + new String(new char[1024]).replace("\0", "A");
+            client.set(key, value);
+            System.out.println("Set " + key);
+        }
 //            client.get("aa");
 //        for (int i = 0; i < 1000; i++) {
 //            String key = "key" + i;
@@ -72,5 +72,6 @@ public class SocketClientUsage {
 //        client.rm("zsy12");
 //        System.out.println("Removed key 'zsy12'");
 //        System.out.println("Get key 'zsy12': " + client.get("zsy12"));
+
     }
 }

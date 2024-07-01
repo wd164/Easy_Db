@@ -7,26 +7,19 @@
  */
 package client;
 
-//public class CmdClient{
-//}
-
-import java.text.SimpleDateFormat;
-import java.util.Random;
-import java.util.regex.Pattern;
-
 import org.apache.commons.cli.*;
-
-import org.apache.commons.cli.*;
-
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Random;
-import java.util.Scanner;
-import java.util.regex.Pattern;
 
 public class CmdClient {
 
-    public static void main(String[] args) {
+    private String host;
+    private int port;
+
+    public CmdClient(String host, int port) {
+        this.host = host;
+        this.port = port;
+    }
+
+    public void initialize(String[] args) {
         // 创建选项对象
         Options options = new Options();
         SocketClient socketClient = new SocketClient("localhost", 12345);

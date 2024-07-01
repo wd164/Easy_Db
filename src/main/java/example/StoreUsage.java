@@ -17,14 +17,15 @@ public class StoreUsage {
         String dataDir="data"+ File.separator;
 //        NormalStore store = new NormalStore(dataDir);
 //        store.set("zsy1","1fdhdfth");
+        NormalStore store = new NormalStore(dataDir);
+//        store.set("zsy1","1");
 //        store.set("zsy2","2");
 //        store.set("zsy3","3");
 //        store.set("zsy4","你好");
-//        store.get("zsy2");
 //        System.out.println(store.get("zsy4"));
 //        store.rm("zsy4");
 //        System.out.println(store.get("zsy4"));
-//        store.set("zsy2","letItgo");
-//        System.out.println(store.get("zsy2"));
+        store.set("zsy2","letItgo");
+//        System.out.println(store.get("zsy3"));
     }
 }

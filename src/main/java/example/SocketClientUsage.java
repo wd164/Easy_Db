@@ -15,7 +15,7 @@ public class SocketClientUsage {
         String host = "localhost";
         int port = 12345;
         Client client = new SocketClient(host, port);
-//        client.get("zsy1");
+        client.set("zsy3","letitbe");
 //        client.set("zsy12","for test");
 //        client.get("zsy12");
 //        client.rm("zsy12" );
@@ -32,14 +32,14 @@ public class SocketClientUsage {
 //            client.set(key, value);
 //            System.out.println("Set " + key);
 //        }
-            client.get("aa");
-        for (int i = 0; i < 1000; i++) {
-            String key = "key" + i;
-            // 生成一个较大的字符串
-            String value = "value" + i;
-            client.set(key, value);
-            System.out.println("Set " + key);
-        }
+//            client.get("aa");
+//        for (int i = 0; i < 1000; i++) {
+//            String key = "key" + i;
+//            // 生成一个较大的字符串
+//            String value = "value" + i;
+//            client.set(key, value);
+//            System.out.println("Set " + key);
+//        }
 
 
 //        // 读取部分数据进行验证

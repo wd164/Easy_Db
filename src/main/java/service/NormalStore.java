@@ -101,7 +101,17 @@ public class NormalStore implements Store {
             file.mkdirs();
         }
         this.reloadIndex();
+
+        // 注册关闭钩子
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                flushMemTableToDisk();
+            } catch (Exception e) {
+                LoggerUtil.error(LOGGER, e, logFormat, "Error flushing memTable during shutdown");
+            }
+        }));
     }
+
 
     public String genFilePath() {
         return this.dataDir + File.separator + NAME + TABLE;
@@ -302,35 +312,35 @@ public class NormalStore implements Store {
 //    }
 //}
 
-//    private void flushMemTableToDisk() {
-//        try {
-//            String filePath = this.genFilePath();
-//            for (Map.Entry<String, Command> entry : memTable.entrySet()) {
-//                String key = entry.getKey();
-//                Command command = entry.getValue();
-//                byte[] commandBytes = JSONObject.toJSONBytes(command);
-//
-//                // 将命令应用到实际数据文件
-//                applyCommandToDataFile(command);
-//
-//                // 在 WAL 文件中记录命令
-//                RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
-//                int pos = RandomAccessFileUtil.write(filePath, commandBytes);
-//
-//
-//                // 更新索引
-//                CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
-//                index.put(key, cmdPos);
-//
-//                LOGGER.info("Flushed command to disk: key={}, pos={}, length={}", key, pos, commandBytes.length);
-//            }
-//        } catch (Throwable t) {
-//            throw new RuntimeException("Error flushing memTable to disk", t);
-//        } finally {
-//            // 清空内存表
-//            memTable.clear();
-//        }
-//    }
+    private void flushMemTableToDisk() {
+        try {
+            String filePath = this.genFilePath();
+            for (Map.Entry<String, Command> entry : memTable.entrySet()) {
+                String key = entry.getKey();
+                Command command = entry.getValue();
+                byte[] commandBytes = JSONObject.toJSONBytes(command);
+
+                // 将命令应用到实际数据文件
+                applyCommandToDataFile(command);
+
+                // 在 WAL 文件中记录命令
+                RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
+                int pos = RandomAccessFileUtil.write(filePath, commandBytes);
+
+
+                // 更新索引
+                CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
+                index.put(key, cmdPos);
+
+                LOGGER.info("Flushed command to disk: key={}, pos={}, length={}", key, pos, commandBytes.length);
+            }
+        } catch (Throwable t) {
+            throw new RuntimeException("Error flushing memTable to disk", t);
+        } finally {
+            // 清空内存表
+            memTable.clear();
+        }
+    }
 
     private void applyCommandToDataFile(Command command) throws IOException {
         try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {

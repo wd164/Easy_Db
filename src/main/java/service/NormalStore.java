@@ -462,7 +462,5 @@ public class NormalStore implements Store {
             System.out.println(file);
             file.delete();
         }
-        // 这里应该有重命名逻辑，将新的SSTable文件重命名为原始文件名
-
     }
 }

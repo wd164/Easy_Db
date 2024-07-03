@@ -10,7 +10,6 @@ package example;
 import controller.SocketServerController;
 import service.NormalStore;
 import service.Store;
-import service.NormalStore;
 
 import java.io.File;
 import java.io.IOException;

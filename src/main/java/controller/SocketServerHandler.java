@@ -136,12 +136,6 @@ public class SocketServerHandler implements Runnable {
                 }
             } catch (IOException e) {
                 LoggerUtil.error(LOGGER, e, "Error closing socket: {}", e.getMessage());
-            }finally {
-                // 在这里执行必要的清理操作，例如刷新内存表到磁盘
-                if (store instanceof NormalStore) {
-                    ((NormalStore) store).flushMemTableToDisk();
-                    LoggerUtil.info(LOGGER, "Flushed memTable to disk after client disconnect");
-                }
             }
         }
     }

@@ -22,9 +22,11 @@ import utils.RandomAccessFileUtil;
 import utils.CompressionUtil;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
@@ -42,14 +44,15 @@ public class NormalStore implements Store {
     public static final String DB = ".db";
     public static final String RW_MODE = "rw";
     public static final String NAME = "data";
+    public static final String Data_NAME = "SSTable";
     private final Logger LOGGER = LoggerFactory.getLogger(NormalStore.class);
     private final String logFormat = "[NormalStore][{}]: {}";
-    private static final int MEM_TABLE_THRESHOLD = 1024; // 持久化阈值
-    private static final long FILE_SIZE_THRESHOLD = 1 * 1024 * 1024; // 文件大小阈值 1MB
+    private static final int MEM_TABLE_THRESHOLD = 10 * 10; // 持久化阈值 10KB
+    private static final long FILE_SIZE_THRESHOLD = 10 * 10; // 文件大小阈值 10MB
     private String currentFilePath;
     private final String dataFilePath;
 
-    private static final String COMPRESSED_FILE_SUFFIX = ".compressed"; // 压缩文件后缀
+//    private static final String COMPRESSED_FILE_SUFFIX = ".compressed"; // 压缩文件后缀
 
 
     /**
@@ -59,7 +62,7 @@ public class NormalStore implements Store {
 
     /**
      * hash索引，存的是数据长度和偏移量
-     * */
+     */
     private HashMap<String, CommandPos> index;
 
     /**
@@ -85,7 +88,6 @@ public class NormalStore implements Store {
      * 持久化阈值
      */
 //    private final int storeThreshold;
-
     public NormalStore(String dataDir) throws IOException {
         this.dataDir = dataDir;
         this.indexLock = new ReentrantReadWriteLock();
@@ -93,11 +95,11 @@ public class NormalStore implements Store {
         this.index = new HashMap<>();
         this.currentFilePath = dataDir + File.separator + NAME + TABLE;
         this.executorService = Executors.newFixedThreadPool(2); // 创建一个固定大小为2的线程池
-        this.dataFilePath = dataDir + File.separator + NAME + DB; // 实际数据文件路径
+        this.dataFilePath = dataDir + File.separator + Data_NAME + DB; // 实际数据文件路径
 
         File file = new File(dataDir);
         if (!file.exists()) {
-            LoggerUtil.info(LOGGER,logFormat, "NormalStore","dataDir isn't exist,creating...");
+            LoggerUtil.info(LOGGER, logFormat, "NormalStore", "dataDir isn't exist,creating...");
             file.mkdirs();
         }
         this.reloadIndex();
@@ -141,7 +143,7 @@ public class NormalStore implements Store {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        LoggerUtil.debug(LOGGER, logFormat, "reload index: "+index.toString());
+        LoggerUtil.debug(LOGGER, logFormat, "reload index: " + index.toString());
     }
 
 
@@ -200,7 +202,7 @@ public class NormalStore implements Store {
             index.put(key, cmdPos);
             // TODO://判断是否需要将内存表中的值写回table
             if (memTable.size() >= MEM_TABLE_THRESHOLD) {
-            // 检查内存表是否达到阀值
+                // 检查内存表是否达到阀值
                 // 将内存表写入磁盘
                 flushMemTableToDisk();
             }
@@ -210,6 +212,7 @@ public class NormalStore implements Store {
             indexLock.writeLock().unlock();
         }
         checkAndRotateIfNecessary();
+        checkAndMergeIfNecessary(); // 写入操作后检查是否需要合并
     }
 
     @Override
@@ -314,7 +317,7 @@ public class NormalStore implements Store {
 //    }
 //}
 
-    public void flushMemTableToDisk() {
+    private void flushMemTableToDisk() {
         indexLock.writeLock().lock();
         try {
             try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
@@ -350,7 +353,6 @@ public class NormalStore implements Store {
         if (writerReader != null) {
             writerReader.close();
         }
-        flushMemTableToDisk();
     }
 
     private void rotate() {
@@ -359,8 +361,9 @@ public class NormalStore implements Store {
                 writerReader.close();
             }
 
-            // 使用时间戳生成唯一的文件名
-            String rotatedFilePath = dataFilePath + "." + System.currentTimeMillis() + ".old";
+            // 使用时间生成唯一的文件名
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
+            String rotatedFilePath = dataFilePath + "." + dateFormat.format(System.currentTimeMillis()) + ".old";
             File dataFile = new File(dataFilePath);
             if (dataFile.renameTo(new File(rotatedFilePath))) {
                 LOGGER.info(logFormat, "文件rotate成功，重命名为: {}", rotatedFilePath);
@@ -373,20 +376,24 @@ public class NormalStore implements Store {
             LOGGER.info(logFormat, "创建新的data文件: {}", dataFilePath);
 
             // 使用多线程进行压缩
-            executorService.submit(() -> compressRotatedFile(rotatedFilePath));
+//            executorService.submit(() -> compressRotatedFile(rotatedFilePath));
 
         } catch (IOException e) {
             LoggerUtil.error(LOGGER, e, logFormat, "文件rotate时发生错误");
         }
     }
 
-    private void compressRotatedFile(String filePath) {
-        try {
-            CompressionUtil.compressFile(filePath, COMPRESSED_FILE_SUFFIX);
-            LOGGER.info(logFormat, "压缩rotate文件: {}", filePath);
-        } catch (IOException e) {
-            LoggerUtil.error(LOGGER, e, logFormat, "压缩旋转文件时发生错误: " + filePath);
-        }
+//    private void compressRotatedFile(String filePath) {
+//        try {
+//            CompressionUtil.compressFile(filePath, COMPRESSED_FILE_SUFFIX);
+//            LOGGER.info(logFormat, "压缩rotate文件: {}", filePath);
+//        } catch (IOException e) {
+//            LoggerUtil.error(LOGGER, e, logFormat, "压缩旋转文件时发生错误: " + filePath);
+//        }
+//    }
+
+    private void compressRotatedFile() {
+
     }
 
     private void checkAndRotateIfNecessary() {
@@ -396,5 +403,66 @@ public class NormalStore implements Store {
         }
     }
 
+    private File[] countSSTableFiles() {
+        // 使用正则表达式匹配以SSTable开头的文件
+        FilenameFilter filter = (dir, name) -> name.matches("^SSTable.*");
+        File dir = new File(dataDir);
+        File[] sstableFiles = dir.listFiles(filter);
+        System.out.println(sstableFiles.length);
+        return sstableFiles;
+    }
 
+    private void checkAndMergeIfNecessary() {
+        File[] sstableFiles = countSSTableFiles();
+        if (sstableFiles.length >= 5) {
+            mergeSSTables(sstableFiles);
+        }
+    }
+
+    public void mergeSSTables(File[] sstableFiles) {
+        if (sstableFiles == null || sstableFiles.length == 0) {
+            LOGGER.info("No SSTable files to merge.");
+            return;
+        }
+
+        // 使用TreeMap来去除重复的键值对，并保持键的有序性
+        TreeMap<String, Command> mergedData = new TreeMap<>();
+        for (File file : sstableFiles) {
+            try (RandomAccessFile reader = new RandomAccessFile(file, "r")) { // 以只读模式打开文件
+                while (reader.getFilePointer() < reader.length()) {
+                    int length = reader.readInt(); // 读取长度前缀
+                    byte[] jsonBytes = new byte[length]; // 根据长度创建字节数组
+                    reader.readFully(jsonBytes); // 读取JSON字符串
+                    String json = new String(jsonBytes, StandardCharsets.UTF_8); // 转换为字符串
+                    JSONObject jsonObject = JSON.parseObject(json); // 解析JSON
+                    Command command = CommandUtil.jsonToCommand(jsonObject); // 转换为Command对象
+                    // 只添加尚未在mergedData中存在的键
+                    mergedData.putIfAbsent(command.getKey(), command);
+                }
+            } catch (IOException e) {
+                LoggerUtil.error(LOGGER, e, logFormat, "Error reading SSTable file: " + file.getName());
+            }
+        }
+
+        // 将合并后的数据写入新的SSTable文件
+        try (RandomAccessFile dataFile = new RandomAccessFile(new File(dataDir, Data_NAME + "_merged" + DB), "rw")) { // 以读写模式打开文件
+            for (Map.Entry<String, Command> entry : mergedData.entrySet()) {
+                Command command = entry.getValue();
+                String json = JSONObject.toJSONString(command); // 转换为JSON字符串
+                byte[] commandBytes = json.getBytes(StandardCharsets.UTF_8); // 转换为字节数组
+                dataFile.writeInt(commandBytes.length); // 写入长度
+                dataFile.write(commandBytes); // 写入JSON字符串的字节
+            }
+        } catch (IOException e) {
+            LoggerUtil.error(LOGGER, e, logFormat, "Error writing merged SSTable file.");
+        }
+
+        // 删除旧的SSTable文件，并重命名新的SSTable文件
+        for (File file : sstableFiles) {
+            System.out.println(file);
+            file.delete();
+        }
+        // 这里应该有重命名逻辑，将新的SSTable文件重命名为原始文件名
+
+    }
 }

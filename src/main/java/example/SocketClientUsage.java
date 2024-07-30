@@ -38,8 +38,6 @@ public class SocketClientUsage {
             client.set("2", "1");
             client.set("3", "1");
         }
-        client.set("1", "1");
-
 
 //        // 读取部分数据进行验证
 //        for (int i = 0; i < 10; i++) {

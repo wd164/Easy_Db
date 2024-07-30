@@ -457,12 +457,10 @@ public class NormalStore implements Store {
             LoggerUtil.error(LOGGER, e, logFormat, "Error writing merged SSTable file.");
         }
 
-        // 删除旧的SSTable文件，并重命名新的SSTable文件
+        // 删除旧的SSTable文件
         for (File file : sstableFiles) {
             System.out.println(file);
             file.delete();
         }
-        // 这里应该有重命名逻辑，将新的SSTable文件重命名为原始文件名
-
     }
 }

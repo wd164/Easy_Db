@@ -19,10 +19,7 @@ import utils.CommandUtil;
 import utils.LoggerUtil;
 import utils.RandomAccessFileUtil;
 
-import java.io.File;
-import java.io.FilenameFilter;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
@@ -318,7 +315,7 @@ public class NormalStore implements Store {
 //    }
 //}
 
-    private void flushMemTableToDisk() {
+    private void flushMemTableToDisk() throws FileNotFoundException {
         java.nio.channels.FileLock lock = null;
         try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
             // 获取dataDir.db的写锁
@@ -338,17 +335,7 @@ public class NormalStore implements Store {
                 LOGGER.info("Flushed command to disk: key={}, length={}", key, commandBytes.length);
             }
 
-            // 清空内存表
-            memTable.clear();
 
-            // 删除旧的WAL文件
-            File walFile = new File(this.genFilePath());
-            if (walFile.exists() && !walFile.delete()) {
-                throw new RuntimeException("删除WAL文件失败");
-            }
-
-            // 重新初始化WAL文件
-            this.writerReader = new RandomAccessFile(this.genFilePath(), RW_MODE);
 
         } catch (IOException e) {
             throw new RuntimeException("Error locking and writing to data file", e);
@@ -363,6 +350,18 @@ public class NormalStore implements Store {
                     LOGGER.error("Error releasing file lock", e);
                 }
             }
+
+            // 清空内存表
+            memTable.clear();
+
+            // 删除旧的WAL文件
+            File walFile = new File(this.genFilePath());
+            if (walFile.exists() && !walFile.delete()) {
+                throw new RuntimeException("删除WAL文件失败");
+            }
+
+            // 重新初始化WAL文件
+            this.writerReader = new RandomAccessFile(this.genFilePath(), RW_MODE);
         }
     }
 

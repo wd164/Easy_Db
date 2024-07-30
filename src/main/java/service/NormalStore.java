@@ -21,10 +21,7 @@ import utils.LoggerUtil;
 import utils.RandomAccessFileUtil;
 import utils.CompressionUtil;
 
-import java.io.File;
-import java.io.FilenameFilter;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
@@ -271,7 +268,7 @@ public class NormalStore implements Store {
             CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
             index.put(key, cmdPos);
             // 写入磁盘后，清空内存表
-            memTable.clear();
+//            memTable.clear();
             // 检查内存表是否达到阈值，达到则写入磁盘
             if (memTable.size() >= MEM_TABLE_THRESHOLD) {
                 flushMemTableToDisk();
@@ -318,32 +315,50 @@ public class NormalStore implements Store {
 //}
 
     private void flushMemTableToDisk() {
-        indexLock.writeLock().lock();
-        try {
-            try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
-                for (Map.Entry<String, Command> entry : memTable.entrySet()) {
-                    String key = entry.getKey();
-                    Command command = entry.getValue();
-                    byte[] commandBytes = JSONObject.toJSONBytes(command);
+        java.nio.channels.FileLock lock = null;
+        try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
+            // 获取dataDir.db的写锁
+            lock = dataFile.getChannel().lock(); // 加写锁
 
-                    // 将命令写入实际数据文件
-                    dataFile.seek(dataFile.length());
-                    dataFile.writeInt(commandBytes.length);
-                    dataFile.write(commandBytes);
+            // 将内存表中的数据写入dataDir.db
+            for (Map.Entry<String, Command> entry : memTable.entrySet()) {
+                String key = entry.getKey();
+                Command command = entry.getValue();
+                byte[] commandBytes = JSONObject.toJSONBytes(command);
 
-                    // 更新索引
-                    CommandPos cmdPos = new CommandPos((int) dataFile.length() - commandBytes.length - 4, commandBytes.length);
-                    index.put(key, cmdPos);
+                // 将命令写入实际数据文件
+                dataFile.seek(dataFile.length());
+                dataFile.writeInt(commandBytes.length);
+                dataFile.write(commandBytes);
 
-                    LOGGER.info("Flushed command to disk: key={}, length={}", key, commandBytes.length);
-                }
+                LOGGER.info("Flushed command to disk: key={}, length={}", key, commandBytes.length);
             }
+
+            // 清空内存表
+            memTable.clear();
+
+            // 删除旧的WAL文件
+            File walFile = new File(this.genFilePath());
+            if (walFile.exists() && !walFile.delete()) {
+                throw new RuntimeException("删除WAL文件失败");
+            }
+
+            // 重新初始化WAL文件
+            this.writerReader = new RandomAccessFile(this.genFilePath(), RW_MODE);
+
+        } catch (IOException e) {
+            throw new RuntimeException("Error locking and writing to data file", e);
         } catch (Throwable t) {
             throw new RuntimeException("Error flushing memTable to disk", t);
         } finally {
-            // 清空内存表
-            memTable.clear();
-            indexLock.writeLock().unlock();
+            // 释放文件锁
+            if (lock != null) {
+                try {
+                    lock.release();
+                } catch (IOException e) {
+                    LOGGER.error("Error releasing file lock", e);
+                }
+            }
         }
     }
 

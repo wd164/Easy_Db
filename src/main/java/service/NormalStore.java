@@ -117,33 +117,63 @@ public class NormalStore implements Store {
         return this.dataDir + File.separator + NAME + TABLE;
     }
 
+//    public void reloadIndex() {
+//        try {
+//            RandomAccessFile file = new RandomAccessFile(this.dataFilePath, RW_MODE);
+//            long len = file.length();
+//            long start = 0;
+//            file.seek(start);
+//            while (start < len) {
+//                int cmdLen = file.readInt();
+//                byte[] bytes = new byte[cmdLen];
+//                file.read(bytes);
+//                JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));
+//                Command command = CommandUtil.jsonToCommand(value);
+//                start += 4;
+//                if (command != null) {
+//                    CommandPos cmdPos = new CommandPos((int) start, cmdLen);
+//                    index.put(command.getKey(), cmdPos);
+//                }
+//                start += cmdLen;
+//            }
+//            file.seek(file.length());
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+//        LoggerUtil.debug(LOGGER, logFormat, "reload index: " + index.toString());
+//    }
+
 
     public void reloadIndex() {
-        try {
-            RandomAccessFile file = new RandomAccessFile(this.genFilePath(), RW_MODE);
-            long len = file.length();
-            long start = 0;
-            file.seek(start);
-            while (start < len) {
-                int cmdLen = file.readInt();
-                byte[] bytes = new byte[cmdLen];
-                file.read(bytes);
-                JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));
-                Command command = CommandUtil.jsonToCommand(value);
-                start += 4;
-                if (command != null) {
-                    CommandPos cmdPos = new CommandPos((int) start, cmdLen);
-                    index.put(command.getKey(), cmdPos);
+        File dir = new File(this.dataDir);
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile() && file.getName().startsWith(Data_NAME)) {
+                    try (RandomAccessFile raf = new RandomAccessFile(file, RW_MODE)) {
+                        long len = raf.length();
+                        long start = 0;
+                        while (start < len) {
+                            int cmdLen = raf.readInt();
+                            byte[] bytes = new byte[cmdLen];
+                            raf.read(bytes);
+                            JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));
+                            Command command = CommandUtil.jsonToCommand(value);
+                            start += 4;
+                            if (command != null) {
+                                CommandPos cmdPos = new CommandPos((int) start, cmdLen);
+                                index.put(command.getKey(), cmdPos);
+                            }
+                            start += cmdLen;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
-                start += cmdLen;
             }
-            file.seek(file.length());
-        } catch (Exception e) {
-            e.printStackTrace();
         }
         LoggerUtil.debug(LOGGER, logFormat, "reload index: " + index.toString());
     }
-
 
 //    没有rotate前版本
 //    private void reloadIndex() throws IOException {
@@ -234,17 +264,35 @@ public class NormalStore implements Store {
             if (cmdPos == null) {
                 return null;
             }
-            byte[] commandBytes = RandomAccessFileUtil.readByIndex(this.genFilePath(), cmdPos.getPos(), cmdPos.getLen());
-
-            JSONObject value = JSONObject.parseObject(new String(commandBytes));
-            Command cmd = CommandUtil.jsonToCommand(value);
-            if (cmd instanceof SetCommand) {
-                return ((SetCommand) cmd).getValue();
+//            byte[] commandBytes = RandomAccessFileUtil.readByIndex(this.genFilePath(), cmdPos.getPos(), cmdPos.getLen());
+//
+//            JSONObject value = JSONObject.parseObject(new String(commandBytes));
+//            Command cmd = CommandUtil.jsonToCommand(value);
+//            if (cmd instanceof SetCommand) {
+//                return ((SetCommand) cmd).getValue();
+//            }
+//            if (cmd instanceof RmCommand) {
+//                return null;
+//            }
+            // 遍历所有数据文件查找数据
+            File dir = new File(this.dataDir);
+            File[] files = dir.listFiles((d, name) -> name.startsWith(Data_NAME));
+            if (files != null) {
+                for (File file : files) {
+                    byte[] commandBytes = RandomAccessFileUtil.readByIndex(file.getPath(), cmdPos.getPos(), cmdPos.getLen());
+                    if (commandBytes == null) {
+                        continue;
+                    }
+                    JSONObject value = JSONObject.parseObject(new String(commandBytes, StandardCharsets.UTF_8));
+                    Command cmd = CommandUtil.jsonToCommand(value);
+                    if (cmd instanceof SetCommand) {
+                        return ((SetCommand) cmd).getValue();
+                    }
+                    if (cmd instanceof RmCommand) {
+                        return null;
+                    }
+                }
             }
-            if (cmd instanceof RmCommand) {
-                return null;
-            }
-
         } catch (Throwable t) {
             throw new RuntimeException(t);
         } finally {

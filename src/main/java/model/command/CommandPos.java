@@ -15,10 +15,12 @@ import lombok.Setter;
 public class CommandPos {
     private int pos;
     private int len;
+    private String fileName;
 
-    public CommandPos(int pos, int len) {
+    public CommandPos(int pos, int len,String fileName) {
         this.pos = pos;
         this.len = len;
+        this.fileName = fileName;
     }
 
     @Override
@@ -26,7 +28,12 @@ public class CommandPos {
         return "CommandPos{" +
                 "pos=" + pos +
                 ", len=" + len +
+                ",fileName=" + fileName +
                 '}';
+    }
+
+    public String getFileName() {
+        return fileName;
     }
 
     public int getPos() {

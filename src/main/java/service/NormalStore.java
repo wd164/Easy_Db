@@ -9,6 +9,7 @@ package service;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import controller.SocketServerHandler;
 import model.command.Command;
 import model.command.CommandPos;
 import model.command.RmCommand;
@@ -18,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import utils.CommandUtil;
 import utils.LoggerUtil;
 import utils.RandomAccessFileUtil;
+import utils.CompressionUtil;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -25,15 +27,15 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.jar.JarEntry;
+import utils.CompressionUtil;
 
 
 public class NormalStore implements Store {
@@ -49,6 +51,8 @@ public class NormalStore implements Store {
     private static final long FILE_SIZE_THRESHOLD = 10 * 10; // 文件大小阈值 10MB
     private String currentFilePath;
     private final String dataFilePath;
+
+//    private static final String COMPRESSED_FILE_SUFFIX = ".compressed"; // 压缩文件后缀
 
 
     /**
@@ -76,10 +80,11 @@ public class NormalStore implements Store {
      */
     private RandomAccessFile writerReader;
 
+    private CompressionUtil CompressionUtil;
+
     private final ExecutorService executorService;
 
     private final BlockingQueue<File[]> mergeQueue; // 用于合并任务的队列
-
 
     /**
      * 持久化阈值
@@ -90,6 +95,7 @@ public class NormalStore implements Store {
         this.indexLock = new ReentrantReadWriteLock();
         this.memTable = new TreeMap<String, Command>();
         this.index = new HashMap<>();
+
         this.currentFilePath = dataDir + File.separator + NAME + TABLE;
         this.executorService = Executors.newFixedThreadPool(2); // 创建一个固定大小为2的线程池
         this.dataFilePath = dataDir + File.separator + Data_NAME + DB; // 实际数据文件路径
@@ -104,6 +110,7 @@ public class NormalStore implements Store {
             file.mkdirs();
         }
         this.reloadIndex();
+        System.out.println(index.toString());
 
         // 注册关闭钩子
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -117,35 +124,71 @@ public class NormalStore implements Store {
 
 
     public String genFilePath() {
+        return this.dataDir + File.separator + Data_NAME + DB;
+    }
+
+    public String WALFilePath() {
         return this.dataDir + File.separator + NAME + TABLE;
     }
 
 
     public void reloadIndex() {
         try {
-            RandomAccessFile file = new RandomAccessFile(this.genFilePath(), RW_MODE);
-            long len = file.length();
-            long start = 0;
-            file.seek(start);
-            while (start < len) {
+            // 获取所有 .db 和 .old 文件
+            File dir = new File(dataDir);
+            File[] dataFiles = dir.listFiles(new FilenameFilter() {
+                @Override
+                public boolean accept(File dir, String name) {
+                    return name.endsWith(".db") || name.endsWith(".old");
+                }
+            });
+
+            // 按文件名或最后修改时间排序
+            if (dataFiles != null) {
+                // 按文件的最后修改时间从旧到新排序
+                Arrays.sort(dataFiles, new Comparator<File>() {
+                    @Override
+                    public int compare(File f1, File f2) {
+                        return Long.compare(f1.lastModified(), f2.lastModified());
+                    }
+                });
+            }
+
+                // 遍历文件并加载索引
+            for (File dataFile : dataFiles) {
+                long len = dataFile.length();
+                long start = 0;
+                loadIndexFromFile(dataFile,start,start + len);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadIndexFromFile(File dataFile,long start,long end) {
+        try {
+            RandomAccessFile file = new RandomAccessFile(dataFile, RW_MODE);
+            file.seek(0); // 确保每次从正确位置读取
+            while (start < end) {
                 int cmdLen = file.readInt();
                 byte[] bytes = new byte[cmdLen];
                 file.read(bytes);
                 JSONObject value = JSON.parseObject(new String(bytes, StandardCharsets.UTF_8));
                 Command command = CommandUtil.jsonToCommand(value);
-                start += 4;
+                start += 4; // 增加命令长度字段长度
                 if (command != null) {
-                    CommandPos cmdPos = new CommandPos((int) start, cmdLen);
+                    CommandPos cmdPos = new CommandPos((int) start,cmdLen ,this.dataDir + File.separator + dataFile.getName() );
                     index.put(command.getKey(), cmdPos);
                 }
-                start += cmdLen;
+                start += cmdLen; // 增加命令数据长度
             }
             file.seek(file.length());
         } catch (Exception e) {
             e.printStackTrace();
         }
-        LoggerUtil.debug(LOGGER, logFormat, "reload index: " + index.toString());
+//        LoggerUtil.debug(LOGGER, logFormat, "reload index: " + index.toString());
     }
+
 
 
 //    没有rotate前版本
@@ -195,11 +238,11 @@ public class NormalStore implements Store {
             // 写内存表（memTable）
             memTable.put(key, command);
             // 写table（wal）文件
-            RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
-            int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
+            RandomAccessFileUtil.writeInt(this.WALFilePath(), commandBytes.length);
+            int pos = RandomAccessFileUtil.write(this.WALFilePath(), commandBytes);
             // 保存到memTable
             // 添加索引
-            CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
+            CommandPos cmdPos = new CommandPos(pos, commandBytes.length,WALFilePath());
             index.put(key, cmdPos);
             // TODO://判断是否需要将内存表中的值写回table
             if (memTable.size() >= MEM_TABLE_THRESHOLD) {
@@ -237,7 +280,7 @@ public class NormalStore implements Store {
             if (cmdPos == null) {
                 return null;
             }
-            byte[] commandBytes = RandomAccessFileUtil.readByIndex(this.genFilePath(), cmdPos.getPos(), cmdPos.getLen());
+            byte[] commandBytes = RandomAccessFileUtil.readByIndex(cmdPos.getFileName(), cmdPos.getPos(), cmdPos.getLen());
 
             JSONObject value = JSONObject.parseObject(new String(commandBytes));
             Command cmd = CommandUtil.jsonToCommand(value);
@@ -267,12 +310,12 @@ public class NormalStore implements Store {
             memTable.put(key, command);
 
             // 写入 WAL 文件
-            RandomAccessFileUtil.writeInt(this.genFilePath(), commandBytes.length);
-            int pos = RandomAccessFileUtil.write(this.genFilePath(), commandBytes);
-            CommandPos cmdPos = new CommandPos(pos, commandBytes.length);
+            RandomAccessFileUtil.writeInt(this.WALFilePath(), commandBytes.length);
+            int pos = RandomAccessFileUtil.write(this.WALFilePath(), commandBytes);
+            CommandPos cmdPos = new CommandPos(pos, commandBytes.length,WALFilePath());
             index.put(key, cmdPos);
             // 写入磁盘后，清空内存表
-//            memTable.clear();
+            //memTable.clear();
             // 检查内存表是否达到阈值，达到则写入磁盘
             if (memTable.size() >= MEM_TABLE_THRESHOLD) {
                 flushMemTableToDisk();
@@ -320,7 +363,9 @@ public class NormalStore implements Store {
 
     private void flushMemTableToDisk() {
         java.nio.channels.FileLock lock = null;
-        try (RandomAccessFile dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE)) {
+        RandomAccessFile dataFile = null;
+        try {
+            dataFile = new RandomAccessFile(this.dataFilePath, RW_MODE);
             // 获取dataDir.db的写锁
             lock = dataFile.getChannel().lock(); // 加写锁
 
@@ -341,21 +386,21 @@ public class NormalStore implements Store {
             // 清空内存表
             memTable.clear();
 
-            // 删除旧的WAL文件
-            File walFile = new File(this.genFilePath());
+//             删除旧的WAL文件
+            File walFile = new File(this.WALFilePath());
             if (walFile.exists() && !walFile.delete()) {
                 throw new RuntimeException("删除WAL文件失败");
             }
 
             // 重新初始化WAL文件
-            this.writerReader = new RandomAccessFile(this.genFilePath(), RW_MODE);
+            this.writerReader = new RandomAccessFile(this.WALFilePath(), RW_MODE);
 
         } catch (IOException e) {
             throw new RuntimeException("Error locking and writing to data file", e);
         } catch (Throwable t) {
             throw new RuntimeException("Error flushing memTable to disk", t);
         } finally {
-            // 释放文件锁
+            // 释放文件锁并关闭文件
             if (lock != null) {
                 try {
                     lock.release();
@@ -363,8 +408,16 @@ public class NormalStore implements Store {
                     LOGGER.error("Error releasing file lock", e);
                 }
             }
+            if (dataFile != null) {
+                try {
+                    dataFile.close();
+                } catch (IOException e) {
+                    LOGGER.error("Error closing data file", e);
+                }
+            }
         }
     }
+
 
     @Override
     public void close() throws IOException {
@@ -434,7 +487,7 @@ public class NormalStore implements Store {
     private void checkAndMergeIfNecessary() {
         File[] sstableFiles = countSSTableFiles();
         if (sstableFiles.length >= 5) {
-//            mergeSSTables(sstableFiles);
+            //            mergeSSTables(sstableFiles);
             mergeQueue.offer(sstableFiles); // 提交合并任务到队列
         }
     }
@@ -479,8 +532,6 @@ public class NormalStore implements Store {
                 LoggerUtil.error(LOGGER, e, logFormat, "Error reading SSTable file: " + file.getName());
             }
         }
-
-
 
         // 将合并后的数据写入新的SSTable文件
         try (RandomAccessFile dataFile = new RandomAccessFile(new File(dataDir, Data_NAME + "_merged" + DB), "rw")) { // 以读写模式打开文件

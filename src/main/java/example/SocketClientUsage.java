@@ -40,6 +40,7 @@ public class SocketClientUsage {
 //        }
 //            client.rm("1");
 //          client.get("3");
+            client.get("3");
 //        // 读取部分数据进行验证
 //        for (int i = 0; i < 10; i++) {
 //            String key = "key" + i;
